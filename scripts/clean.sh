@@ -1,0 +1,1 @@
+rm -rf lib src/data/icons/react*
