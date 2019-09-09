@@ -6,7 +6,6 @@ import byFamily from "../../generated/libcore-buildTokenAccounts";
 
 export async function buildTokenAccounts(arg: {
   currency: CryptoCurrency,
-  coreAccount: CoreAccount,
   accountId: string,
   existingAccount: ?Account
 }): Promise<?(TokenAccount[])> {

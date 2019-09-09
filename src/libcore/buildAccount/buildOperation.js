@@ -1,10 +1,11 @@
 // @flow
 
 import type { Operation, CryptoCurrency, TokenAccount } from "../../types";
-import { libcoreAmountToBigNumber } from "../buildBigNumber";
 import { inferSubOperations } from "../../account";
 import type { CoreOperation } from "../types";
 import perFamily from "../../generated/libcore-buildOperation";
+import { BigNumber } from "bignumber.js";
+var bitcoin_operation = require('../messages/bitcoin/operation_pb');
 
 export const OperationTypeMap = {
   "0": "OUT",
@@ -12,7 +13,7 @@ export const OperationTypeMap = {
 };
 
 export async function buildOperation(arg: {
-  coreOperation: CoreOperation,
+  coreOperation: any,
   accountId: string,
   currency: CryptoCurrency,
   contextualTokenAccounts?: ?(TokenAccount[])
@@ -23,28 +24,28 @@ export async function buildOperation(arg: {
     throw new Error(currency.family + " family not supported");
   }
 
-  const operationType = await coreOperation.getOperationType();
-  const type = OperationTypeMap[operationType] || "NONE";
+  var type = "NONE";
+  if (coreOperation.getOperationType() === bitcoin_operation.Operation.OperationType.SEND) {
+    type = "OUT";
+  }
+  else if (coreOperation.getOperationType() === bitcoin_operation.Operation.OperationType.RECEIVE) {
+    type = "IN";
+  }
 
-  const coreValue = await coreOperation.getAmount();
-  let value = await libcoreAmountToBigNumber(coreValue);
-
-  const coreFee = await coreOperation.getFees();
-  if (!coreFee) throw new Error("fees should not be null");
-  const fee = await libcoreAmountToBigNumber(coreFee);
+  var value = BigNumber(coreOperation.getAmount().getValue());
+  
+  if (!coreOperation.getFee())
+    throw new Error("fees should not be null");
+  const fee = BigNumber(coreOperation.getFee().getValue());
 
   if (type === "OUT") {
     value = value.plus(fee);
   }
 
-  const blockHeight = await coreOperation.getBlockHeight();
-
-  const [recipients, senders] = await Promise.all([
-    coreOperation.getRecipients(),
-    coreOperation.getSenders()
-  ]);
-
-  const date = new Date(await coreOperation.getDate());
+  const recipients = coreOperation.getReceiversList();
+  const senders = coreOperation.getSendersList();
+  
+  const date = new Date(coreOperation.getDateEpochMs());
 
   const partialOp = {
     type,
@@ -52,7 +53,7 @@ export async function buildOperation(arg: {
     fee,
     senders,
     recipients,
-    blockHeight,
+    blockHeight: coreOperation.getBlockHeight(),
     blockHash: null,
     accountId,
     date,

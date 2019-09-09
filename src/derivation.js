@@ -23,7 +23,9 @@ export type DerivationMode = $Keys<typeof modes>;
 
 const modes = Object.freeze({
   // this is "default" by convention
-  "": {},
+  "": {
+    keychainEngine: "BIP49_P2SH",
+  },
 
   // MEW legacy derivation
   ethM: {
@@ -207,6 +209,18 @@ export const getDerivationScheme = ({
       (currencyForceCoinType ? currency.coinType : "<coin_type>");
   const purpose = getPurposeDerivationMode(derivationMode);
   return `${purpose}'/${coinType}'/<account>'/<node>/<address>`;
+};
+
+export const cutDerivationSchemeAfterAccount = (
+  derivationScheme: string
+): string => {
+  var accountStartIndex = derivationScheme.indexOf("<account>");
+  if (accountStartIndex === -1)
+    return derivationScheme;
+  var delimeterAfterAccount = derivationScheme.indexOf("/", accountStartIndex);
+  if (delimeterAfterAccount === -1)
+    return derivationScheme;
+  return derivationScheme.substring(0, delimeterAfterAccount);
 };
 
 // Execute a derivation scheme in JS side

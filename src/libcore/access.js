@@ -23,15 +23,7 @@ type AfterGCJob<R> = {
 const afterLibcoreFlushes: Array<AfterGCJob<any>> = [];
 
 function flush(c: Core) {
-  lastFlush = c
-    .flush()
-    .then(async () => {
-      let item;
-      while ((item = afterLibcoreFlushes.shift())) {
-        item.resolve(await item.job(c));
-      }
-    })
-    .catch(e => console.error("libcore-flush-fail", e));
+
 }
 
 export async function afterLibcoreGC<R>(

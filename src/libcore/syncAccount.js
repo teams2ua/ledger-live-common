@@ -11,76 +11,80 @@ import { getOrCreateWallet } from "./getOrCreateWallet";
 import { getOrCreateAccount } from "./getOrCreateAccount";
 import { remapLibcoreErrors } from "./errors";
 import postSyncPatchPerFamily from "../generated/libcore-postSyncPatch";
+var core_messages = require('./messages/commands_pb.js');
+var bitcoin_messages = require('./messages/bitcoin/commands_pb.js');
 
 // FIXME how to get that
 const OperationOrderKey = {
   date: 0
 };
 
-async function getCoreObjects(core, account: Account) {
-  const walletName = getWalletName(account);
-  const { currency, derivationMode } = account;
-
-  const coreWallet = await getOrCreateWallet({
-    core,
-    walletName,
-    currency,
-    derivationMode
-  });
-
-  const coreAccount = await getOrCreateAccount({
-    core,
-    coreWallet,
-    account
-  });
-
-  return { coreWallet, coreAccount, walletName };
-}
-
 export async function syncCoreAccount({
   core,
-  coreWallet,
-  coreAccount,
   currency,
   accountIndex,
   derivationMode,
-  seedIdentifier,
+  xpub,
   existingAccount
 }: {
   core: *,
-  coreWallet: *,
-  coreAccount: *,
   currency: CryptoCurrency,
   accountIndex: number,
   derivationMode: DerivationMode,
-  seedIdentifier: string,
+  xpub: string,
   existingAccount?: ?Account
 }): Promise<Account> {
   let coreOperations;
+  let accId;
   try {
-    const eventReceiver = await core.EventReceiver.newInstance();
-    const eventBus = await coreAccount.synchronize();
-    const serialContext = await core
-      .getThreadDispatcher()
-      .getMainExecutionContext();
-
-    await eventBus.subscribe(serialContext, eventReceiver);
-
-    const query = await coreAccount.queryOperations();
-    const completedQuery = await query.complete();
-    const sortedQuery = await completedQuery.addOrder(
-      OperationOrderKey.date,
-      false
-    );
-    coreOperations = await sortedQuery.execute();
+    accId = new bitcoin_messages.AccountID();
+    accId.setCurrencyName(currency.);
+    accId.setXpub(xpub);
+    if (derivationMode === "BIP49_P2SH") {
+      accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP49_P2SH);
+    }
+    else if (derivationMode === "BIP32_P2PKH") {
+      accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP32_P2PKH);
+    }
+    else if (derivationMode === "BIP173_P2WPKH") {
+      accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP173_P2WPKH);
+    }
+    else if (derivationMode === "BIP173_P2WSH") {
+      accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP173_P2WSH);
+    }
+    //sync
+    var syncReq = new bitcoin_messages.SyncAccountRequest();
+    syncReq.setAccountId(accId)
+    var bitcoinRequest = new bitcoin_messages.BitcoinRequest();
+    bitcoinRequest.setSyncAccount(syncReq);
+    var req = new core_messages.CoreRequest();
+    req.setRequestType(core_messages.CoreRequestType.BITCOIN_REQUEST);
+    req.setRequestBody(bitcoinRequest.serializeBinary());
+    
+    var resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+    if (resp.getError()) throw resp.getError();
+    //get operations
+    var getOps = new bitcoin_messages.GetOperationsRequest();
+    getOps.setAccountId(accId)
+    bitcoinRequest = new bitcoin_messages.BitcoinRequest();
+    bitcoinRequest.setGetOperations(getOps);
+    var req = new core_messages.CoreRequest();
+    req.setRequestType(core_messages.CoreRequestType.BITCOIN_REQUEST);
+    req.setRequestBody(bitcoinRequest.serializeBinary());
+    
+    resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+    if (resp.getError()) throw resp.getError();
+    
+    var getOperationsResponse = bitcoin_messages.GetOperationsResponse.deserializeBinary(resp.getResponseBody());
+    coreOperations = getOperationsResponse.getOperationsList();
   } catch (e) {
     if (e.name !== "Error") throw remapLibcoreErrors(e);
     throw new SyncError(e.message);
   }
 
   const account = await buildAccount({
-    coreWallet,
-    coreAccount,
+    core,
+    coreAccountId: accId,
     coreOperations,
     currency,
     accountIndex,
@@ -104,20 +108,14 @@ export function syncAccount(
   return defer(() =>
     from(
       withLibcore(core =>
-        getCoreObjects(core, existingAccount).then(
-          ({ coreWallet, coreAccount, walletName }) =>
-            syncCoreAccount({
-              core,
-              coreWallet,
-              coreAccount,
-              walletName,
-              currency,
-              accountIndex: existingAccount.index,
-              derivationMode,
-              seedIdentifier,
-              existingAccount
-            })
-        )
+        syncCoreAccount({
+          core,
+          currency,
+          accountIndex: existingAccount.index,
+          derivationMode,
+          seedIdentifier,
+          existingAccount
+        })
       )
     )
   ).pipe(

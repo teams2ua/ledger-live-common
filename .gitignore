@@ -33,3 +33,5 @@ src/partners/icons/reactNative
 
 
 tool/tests/*/output
+dbdata/*
+*.log

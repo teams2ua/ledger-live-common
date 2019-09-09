@@ -8,14 +8,17 @@ import {
 } from "../../account";
 import type { Account, CryptoCurrency, DerivationMode } from "../../types";
 import { libcoreAmountToBigNumber } from "../buildBigNumber";
-import type { CoreWallet, CoreAccount, CoreOperation } from "../types";
 import { buildOperation } from "./buildOperation";
 import { buildTokenAccounts } from "./buildTokenAccounts";
 import { minimalOperationsBuilder } from "../../reconciliation";
+import { BigNumber } from "bignumber.js";
+import { runDerivationScheme, getDerivationScheme, cutDerivationSchemeAfterAccount } from "../../derivation";
+var core_messages = require('../messages/commands_pb.js');
+var bitcoin_messages = require('../messages/bitcoin/commands_pb.js');
 
 export async function buildAccount({
-  coreWallet,
-  coreAccount,
+  core,
+  coreAccountId,
   coreOperations,
   currency,
   accountIndex,
@@ -23,45 +26,67 @@ export async function buildAccount({
   seedIdentifier,
   existingAccount
 }: {
-  coreWallet: CoreWallet,
-  coreAccount: CoreAccount,
-  coreOperations: CoreOperation[],
+  core: any,
+  coreAccountId: any,
+  coreOperations: any[],
   currency: CryptoCurrency,
   accountIndex: number,
   derivationMode: DerivationMode,
   seedIdentifier: string,
   existingAccount: ?Account
 }): Promise<Account> {
-  const nativeBalance = await coreAccount.getBalance();
-  const balance = await libcoreAmountToBigNumber(nativeBalance);
+  //get balance
+  var getBalanceReq = new bitcoin_messages.GetBalanceRequest();
+  getBalanceReq.setAccountId(coreAccountId)
+  var bitcoinRequest = new bitcoin_messages.BitcoinRequest();
+  bitcoinRequest.setGetBalance(getBalanceReq);
+  var req = new core_messages.CoreRequest();
+  req.setRequestType(core_messages.CoreRequestType.BITCOIN_REQUEST);
+  req.setRequestBody(bitcoinRequest.serializeBinary());
 
-  const coreAccountCreationInfo = await coreWallet.getAccountCreationInfo(
-    accountIndex
-  );
+  var resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+  if (resp.getError()) throw resp.getError();
+  var getBalanceResponse = bitcoin_messages.GetBalanceResponse.deserializeBinary(resp.getResponseBody());
+  const balance = BigNumber(getBalanceResponse.getAmount().getValue());
 
-  const derivations = await coreAccountCreationInfo.getDerivations();
-  const accountPath = last(derivations);
+  //get last block
+  var getLastBlockReq = new bitcoin_messages.GetLastBlockRequest();
+  getLastBlockReq.setAccountId(coreAccountId)
+  bitcoinRequest = new bitcoin_messages.BitcoinRequest();
+  bitcoinRequest.setGetBalance(getLastBlockReq);
+  req = new core_messages.CoreRequest();
+  req.setRequestType(core_messages.CoreRequestType.BITCOIN_REQUEST);
+  req.setRequestBody(bitcoinRequest.serializeBinary());
 
-  const coreBlock = await coreAccount.getLastBlock();
-  const blockHeight = await coreBlock.getHeight();
+  resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+  if (resp.getError()) throw resp.getError();
+  var getLastBlockResp = bitcoin_messages.GetLastBlockResponse.deserializeBinary(resp.getResponseBody());
+  
+  const blockHeight = getLastBlockResp.getLastBlock().getHeight();
+  // get fresh address
+  var getFreshAddressReq = new bitcoin_messages.GetFreshAddressRequest();
+  getFreshAddressReq.setAccountId(coreAccountId)
+  bitcoinRequest = new bitcoin_messages.BitcoinRequest();
+  bitcoinRequest.setGetFreshAddress(getFreshAddressReq);
+  req = new core_messages.CoreRequest();
+  req.setRequestType(core_messages.CoreRequestType.BITCOIN_REQUEST);
+  req.setRequestBody(bitcoinRequest.serializeBinary());
 
-  const coreFreshAddresses = await coreAccount.getFreshPublicAddresses();
-  if (coreFreshAddresses.length === 0)
-    throw new Error("expected at least one fresh address");
-
-  const freshAddresses = await Promise.all(
-    coreFreshAddresses.map(async item => {
-      const [address, path] = await Promise.all([
-        item.toString(),
-        item.getDerivationPath()
-      ]);
-
-      const derivationPath = path ? `${accountPath}/${path}` : accountPath;
-
-      return { address, derivationPath };
-    })
-  );
-
+  resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+  if (resp.getError()) throw resp.getError();
+  var getFreshAddressResp = bitcoin_messages.GetFreshAddressResponse.deserializeBinary(resp.getResponseBody());
+  
+  if ((getFreshAddressResp.getAddress() === "") || 
+      (getFreshAddressResp.getPath() === ""))
+    throw new Error("Can't get fresh address from lib-core");
+  const accountPath = runDerivationScheme(
+    cutDerivationSchemeAfterAccount(getDerivationScheme({derivationMode, currency})),
+    {coinType: currency.coinType },
+    {account: accountIndex });
+  const freshAddress = {
+    str: getFreshAddressResp.getAddress(),
+    path: (getFreshAddressResp.getPath() === "")? accountPath : `${accountPath}/${getFreshAddressResp.getPath()}`
+  };
   const name =
     coreOperations.length === 0
       ? getNewAccountPlaceholderName({
@@ -74,9 +99,9 @@ export async function buildAccount({
           index: accountIndex,
           derivationMode
         });
-
+  
   // retrieve xpub
-  const xpub = await coreAccount.getRestoreKey();
+  const xpub = coreAccountId.getXpub();
 
   const accountId = encodeAccountId({
     type: "libcore",
@@ -85,10 +110,8 @@ export async function buildAccount({
     xpubOrAddress: xpub,
     derivationMode
   });
-
   const tokenAccounts = await buildTokenAccounts({
     currency,
-    coreAccount,
     accountId,
     existingAccount
   });
@@ -112,9 +135,9 @@ export async function buildAccount({
     xpub,
     derivationMode,
     index: accountIndex,
-    freshAddress: freshAddresses[0].address,
-    freshAddressPath: freshAddresses[0].derivationPath,
-    freshAddresses,
+    freshAddress: freshAddress.address,
+    freshAddressPath: freshAddress.derivationPath,
+    freshAddresses: [],
     name,
     balance,
     blockHeight,

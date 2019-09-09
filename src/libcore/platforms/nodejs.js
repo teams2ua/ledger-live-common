@@ -12,10 +12,10 @@ import type { Core, CoreStatics } from "../types";
 import { setLoadCoreImplementation } from "../access";
 import { setRemapLibcoreErrorsImplementation } from "../errors";
 import { getEnv } from "../../env";
-import {UbinderOnPromises} from "ubinder/src/js_common/UbinderOnPromises";
-const commands = require('@ledgerhq/ledger-core/js/messages/commands_pb')
-const core_config = require('@ledgerhq/ledger-core/js/messages/core_configuration_pb')
-const services = require('@ledgerhq/ledger-core/js/messages/services_pb.js')
+import { UbinderOnPromises } from '../UbinderOnPromises';
+const commands = require('../messages/commands_pb')
+const core_config = require('../messages/core_configuration_pb')
+const services = require('../messages/services_pb.js')
 
 
 import network from "../../network";
@@ -46,7 +46,6 @@ function OnRequest(data, callback) {
         if (dataStr != "") {
             param.data = dataStr;
         }
-        console.log(param);
         axios(param)
           .then((resp) => {
               var serviceResp = new services.ServiceResponse();
@@ -92,7 +91,7 @@ async function SetSettings(callbacker, dbPath, dbPassword) {
   req.setRequestBody(configuration.serializeBinary());
   var resp = commands.CoreResponse.deserializeBinary(await callbacker.sendRequest(req.serializeBinary()));
   if (resp.getError()) throw resp.getError();
-  return True;
+  return true;
 }
 
 export default (arg: {

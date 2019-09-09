@@ -52,6 +52,7 @@ import signMessage from "@ledgerhq/live-common/lib/hw/signMessage";
 import { discoverDevices } from "@ledgerhq/live-common/lib/hw";
 import accountFormatters from "./accountFormatters";
 import proxy from "./proxy";
+var messages = require("@ledgerhq/live-common/src/libcore/messages/commands_pb");
 import {
   scan,
   scanCommonOpts,
@@ -113,7 +114,13 @@ const all = {
           "@ledgerhq/ledger-core: " +
             require("@ledgerhq/ledger-core/package.json").version
         ),
-        from(withLibcore(core => core.LedgerCore.getStringVersion())).pipe(
+        from(withLibcore(async core => {
+          var getVersionRequest = new messages.CoreRequest();
+          getVersionRequest.setRequestType(messages.CoreRequestType.GET_VERSION);
+          var getVersionResponse = messages.CoreResponse.deserializeBinary(await core.sendRequest(getVersionRequest.serializeBinary()));
+          var versionResp = messages.GetVersionResponse.deserializeBinary(getVersionResponse.getResponseBody());
+          return versionResp.getMajor() + "." + versionResp.getMinor() + "." + versionResp.getPatch();
+        })).pipe(
           map(v => "libcore: " + v)
         )
       )

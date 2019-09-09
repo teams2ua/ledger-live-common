@@ -188,10 +188,10 @@ export function scan(arg) {
             return account;
           })
         ).pipe(
-          concatMap(account =>
-            syncAccount(account).pipe(
-              reduce((a: Account, f: *) => f(a), account)
-            )
+          concatMap(account => 
+              syncAccount(account).pipe(
+                reduce((a: Account, f: *) => f(a), account)
+              )
           )
         );
       }

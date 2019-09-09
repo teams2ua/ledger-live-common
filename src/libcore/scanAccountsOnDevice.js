@@ -30,7 +30,6 @@ import type { Core, CoreWallet } from "./types";
 
 async function scanNextAccount(props: {
   core: Core,
-  wallet: CoreWallet,
   transport: Transport<*>,
   currency: CryptoCurrency,
   accountIndex: number,
@@ -43,7 +42,6 @@ async function scanNextAccount(props: {
 }) {
   const {
     core,
-    wallet,
     transport,
     currency,
     accountIndex,
@@ -55,13 +53,13 @@ async function scanNextAccount(props: {
   } = props;
 
   let coreAccount;
+
   try {
-    coreAccount = await wallet.getAccount(accountIndex);
+    coreAccount = await getAccount(accountIndex);
   } catch (err) {
     if (isUnsubscribed()) return;
     coreAccount = await createAccountFromDevice({
       core,
-      wallet,
       transport,
       currency,
       index: accountIndex,
@@ -74,8 +72,6 @@ async function scanNextAccount(props: {
 
   const account = await syncCoreAccount({
     core,
-    coreWallet: wallet,
-    coreAccount,
     currency,
     accountIndex,
     derivationMode,
@@ -180,27 +176,12 @@ export const scanAccountsOnDevice = (
 
             if (isUnsubscribed()) return;
 
-            const walletName = getWalletName({
-              seedIdentifier,
-              currency,
-              derivationMode
-            });
-
-            const wallet = await getOrCreateWallet({
-              core,
-              walletName,
-              currency,
-              derivationMode
-            });
-            if (isUnsubscribed()) return;
-
             const onAccountScanned = account => o.next(account);
 
             // recursively scan all accounts on device on the given app
             // new accounts will be created in sqlite, existing ones will be updated
             await scanNextAccount({
               core,
-              wallet,
               transport,
               currency,
               accountIndex: 0,
