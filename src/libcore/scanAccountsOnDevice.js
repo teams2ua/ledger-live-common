@@ -6,15 +6,16 @@ import { log } from "@ledgerhq/logs";
 import { TransportStatusError } from "@ledgerhq/errors";
 import { getCryptoCurrencyById } from "../currencies";
 import {
+  getDerivationScheme,
   getDerivationModesForCurrency,
-  isUnsplitDerivationMode,
-  getPurposeDerivationMode,
   derivationModeSupportsIndex,
   isIterableDerivationMode,
-  getMandatoryEmptyAccountSkip
+  cutDerivationSchemeBeforeAccount,
+  cutDerivationSchemeAfterAccount,
+  getMandatoryEmptyAccountSkip,
+  runDerivationScheme
 } from "../derivation";
 import {
-  getWalletName,
   shouldShowNewAccount,
   isAccountEmpty
 } from "../account";
@@ -23,8 +24,6 @@ import { withDevice } from "../hw/deviceAccess";
 import getAddress from "../hw/getAddress";
 import { withLibcoreF } from "./access";
 import { syncCoreAccount } from "./syncAccount";
-import { getOrCreateWallet } from "./getOrCreateWallet";
-import { createAccountFromDevice } from "./createAccountFromDevice";
 import { remapLibcoreErrors } from "./errors";
 import type { Core, CoreWallet } from "./types";
 
@@ -34,8 +33,9 @@ async function scanNextAccount(props: {
   currency: CryptoCurrency,
   accountIndex: number,
   onAccountScanned: Account => *,
-  seedIdentifier: string,
+  parentPublicKey: string,
   derivationMode: DerivationMode,
+  accountDerivationScheme: string,
   showNewAccount: boolean,
   isUnsubscribed: () => boolean,
   emptyCount?: number
@@ -46,36 +46,32 @@ async function scanNextAccount(props: {
     currency,
     accountIndex,
     onAccountScanned,
-    seedIdentifier,
+    parentPublicKey,
     derivationMode,
+    accountDerivationScheme,
     showNewAccount,
     isUnsubscribed
   } = props;
 
-  let coreAccount;
-
-  try {
-    coreAccount = await getAccount(accountIndex);
-  } catch (err) {
-    if (isUnsubscribed()) return;
-    coreAccount = await createAccountFromDevice({
-      core,
-      transport,
-      currency,
-      index: accountIndex,
-      derivationMode,
-      isUnsubscribed
-    });
-  }
-
+  if (isUnsubscribed()) return;
+  const { publicKey, chainCode } = await getAddress(transport, {
+    currency,
+    path: runDerivationScheme(accountDerivationScheme, {coinType: currency.coinType}, opts: {account: accountIndex}),
+    derivationMode,
+    askChainCode: true,
+    skipAppFailSafeCheck: true
+  });
+  
   if (isUnsubscribed() || !coreAccount) return;
+
+  
 
   const account = await syncCoreAccount({
     core,
     currency,
     accountIndex,
     derivationMode,
-    seedIdentifier
+    xpub: seedIdentifier
   });
 
   if (isUnsubscribed()) return;
@@ -136,24 +132,21 @@ export const scanAccountsOnDevice = (
           }
           for (let i = 0; i < derivationModes.length; i++) {
             const derivationMode = derivationModes[i];
-
-            const unsplitFork = isUnsplitDerivationMode(derivationMode)
-              ? currency.forkedFrom
-              : null;
-            const purpose = getPurposeDerivationMode(derivationMode);
-            const { coinType } = unsplitFork
-              ? getCryptoCurrencyById(unsplitFork)
-              : currency;
-            const path = `${purpose}'/${coinType}'`;
-
+            const derivationScheme = getDerivationScheme({derivationMode, currency});
+            const schemeToAccountParent = cutDerivationSchemeBeforeAccount(derivationScheme);
+            const schemeToAccount = cutDerivationSchemeAfterAccount(derivationScheme);
+            const pathToAccountParent = runDerivationScheme(
+              schemeToAccountParent,
+              {coinType: currency.coinType});
             let result;
 
             try {
               result = await getAddress(transport, {
                 currency,
-                path,
+                path: pathToAccountParent,
                 derivationMode
               });
+              console.log(result);
             } catch (e) {
               // feature detection: some old app will specifically returns this code for segwit case and we ignore it
               if (
@@ -172,7 +165,7 @@ export const scanAccountsOnDevice = (
 
             if (!result) continue;
 
-            const seedIdentifier = result.publicKey;
+            const parentPublicKey = result.publicKey;
 
             if (isUnsubscribed()) return;
 
@@ -186,8 +179,9 @@ export const scanAccountsOnDevice = (
               currency,
               accountIndex: 0,
               onAccountScanned,
-              seedIdentifier,
+              parentPublicKey,
               derivationMode,
+              accountDerivationScheme: schemeToAccount,
               showNewAccount: shouldShowNewAccount(currency, derivationMode),
               isUnsubscribed
             });

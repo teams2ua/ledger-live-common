@@ -3,13 +3,11 @@
 import { Observable, from, defer } from "rxjs";
 import { map } from "rxjs/operators";
 import { SyncError } from "@ledgerhq/errors";
-import { getWalletName } from "../account";
 import type { Account, CryptoCurrency, DerivationMode } from "../types";
 import { withLibcore } from "./access";
 import { buildAccount } from "./buildAccount";
-import { getOrCreateWallet } from "./getOrCreateWallet";
-import { getOrCreateAccount } from "./getOrCreateAccount";
 import { remapLibcoreErrors } from "./errors";
+import { getKeychainEngine } from "../derivation";
 import postSyncPatchPerFamily from "../generated/libcore-postSyncPatch";
 var core_messages = require('./messages/commands_pb.js');
 var bitcoin_messages = require('./messages/bitcoin/commands_pb.js');
@@ -38,18 +36,19 @@ export async function syncCoreAccount({
   let accId;
   try {
     accId = new bitcoin_messages.AccountID();
-    accId.setCurrencyName(currency.);
+    accId.setCurrencyName(currency.name);
     accId.setXpub(xpub);
-    if (derivationMode === "BIP49_P2SH") {
+    const keychainEngine = getKeychainEngine(derivationMode);
+    if (keychainEngine === "BIP49_P2SH") {
       accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP49_P2SH);
     }
-    else if (derivationMode === "BIP32_P2PKH") {
+    else if (keychainEngine === "BIP32_P2PKH") {
       accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP32_P2PKH);
     }
-    else if (derivationMode === "BIP173_P2WPKH") {
+    else if (keychainEngine === "BIP173_P2WPKH") {
       accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP173_P2WPKH);
     }
-    else if (derivationMode === "BIP173_P2WSH") {
+    else if (keychainEngine === "BIP173_P2WSH") {
       accId.setKeychainEngine(bitcoin_messages.KeychainEngine.BIP173_P2WSH);
     }
     //sync

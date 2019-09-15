@@ -211,6 +211,15 @@ export const getDerivationScheme = ({
   return `${purpose}'/${coinType}'/<account>'/<node>/<address>`;
 };
 
+export const cutDerivationSchemeBeforeAccount = (
+  derivationScheme: string
+): string => {
+  var accountStartIndex = derivationScheme.indexOf("<account>");
+  if (accountStartIndex === -1)
+    return derivationScheme;
+  return derivationScheme.substring(0, accountStartIndex - 1);
+};
+
 export const cutDerivationSchemeAfterAccount = (
   derivationScheme: string
 ): string => {
