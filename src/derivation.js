@@ -24,7 +24,6 @@ export type DerivationMode = $Keys<typeof modes>;
 const modes = Object.freeze({
   // this is "default" by convention
   "": {
-    keychainEngine: "BIP49_P2SH",
   },
 
   // MEW legacy derivation
@@ -140,7 +139,7 @@ export const isSegwitDerivationMode = (
 ): boolean => modes[derivationMode].isSegwit || false;
 
 export const getKeychainEngine = (derivationMode: DerivationMode): ?string =>
-  modes[derivationMode].keychainEngine;
+  modes[derivationMode].keychainEngine || "BIP32_P2PKH";
 
 export const isUnsplitDerivationMode = (
   derivationMode: DerivationMode

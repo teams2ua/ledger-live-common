@@ -36,7 +36,7 @@ export async function syncCoreAccount({
   let accId;
   try {
     accId = new bitcoin_messages.AccountID();
-    accId.setCurrencyName(currency.name);
+    accId.setCurrencyName(currency.id);
     accId.setXpub(xpub);
     const keychainEngine = getKeychainEngine(derivationMode);
     if (keychainEngine === "BIP49_P2SH") {
@@ -88,7 +88,6 @@ export async function syncCoreAccount({
     currency,
     accountIndex,
     derivationMode,
-    seedIdentifier,
     existingAccount
   });
 
@@ -112,7 +111,7 @@ export function syncAccount(
           currency,
           accountIndex: existingAccount.index,
           derivationMode,
-          seedIdentifier,
+          xpub: seedIdentifier,
           existingAccount
         })
       )

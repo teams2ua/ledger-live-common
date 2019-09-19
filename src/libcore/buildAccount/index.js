@@ -23,7 +23,6 @@ export async function buildAccount({
   currency,
   accountIndex,
   derivationMode,
-  seedIdentifier,
   existingAccount
 }: {
   core: any,
@@ -32,7 +31,6 @@ export async function buildAccount({
   currency: CryptoCurrency,
   accountIndex: number,
   derivationMode: DerivationMode,
-  seedIdentifier: string,
   existingAccount: ?Account
 }): Promise<Account> {
   //get balance
@@ -131,7 +129,7 @@ export async function buildAccount({
   const account: $Exact<Account> = {
     type: "Account",
     id: accountId,
-    seedIdentifier,
+    seedIdentifier: xpub,
     xpub,
     derivationMode,
     index: accountIndex,
