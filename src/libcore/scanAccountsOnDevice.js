@@ -26,6 +26,8 @@ import { withLibcoreF } from "./access";
 import { syncCoreAccount } from "./syncAccount";
 import { remapLibcoreErrors } from "./errors";
 import type { Core, CoreWallet } from "./types";
+var core_messages = require('./messages/commands_pb.js');
+var utils_messages = require('./messages/utils/commands_pb.js');
 
 async function scanNextAccount(props: {
   core: Core,
@@ -54,24 +56,49 @@ async function scanNextAccount(props: {
   } = props;
 
   if (isUnsubscribed()) return;
+  var opts = {account: accountIndex};
   const { publicKey, chainCode } = await getAddress(transport, {
     currency,
-    path: runDerivationScheme(accountDerivationScheme, {coinType: currency.coinType}, opts: {account: accountIndex}),
+    path: runDerivationScheme(accountDerivationScheme, {coinType: currency.coinType}, opts),
     derivationMode,
     askChainCode: true,
     skipAppFailSafeCheck: true
   });
-  
-  if (isUnsubscribed() || !coreAccount) return;
 
+  if (isUnsubscribed()) return;
   
+  var xpub = "";
+  const depth = accountDerivationScheme.split("/").length;
+  var realAccountIndex = accountIndex;
+  // is hardened address
+  if (accountDerivationScheme.endsWith('\''))
+    realAccountIndex += 0x80000000;
+  var createXpubRequest = new utils_messages.CreateXpubFromPointsRequest();
+  createXpubRequest.setVersionPrefix("0488B21E"); // xpub, change for other networks
+  createXpubRequest.setParentPublicPoint(parentPublicKey);
+  createXpubRequest.setIndex(realAccountIndex);
+  createXpubRequest.setChainCode(chainCode);
+  createXpubRequest.setPublicPoint(publicKey);
+  createXpubRequest.setDepth(depth);
+  var utilsRequest = new utils_messages.UtilsRequest();
+  utilsRequest.setXpubFromPoints(createXpubRequest);
+  var req = new core_messages.CoreRequest();
+  req.setRequestType(core_messages.CoreRequestType.UTILS_REQUEST);
+  req.setRequestBody(utilsRequest.serializeBinary());
+  
+  var resp = core_messages.CoreResponse.deserializeBinary(await core.sendRequest(req.serializeBinary()));
+  if (resp.getError()) throw resp.getError();
+  
+  var createXpubResponse = utils_messages.CreateXpubFromPointsResponse.deserializeBinary(resp.getResponseBody());
+  xpub = createXpubResponse.getXpub();
+  console.log(xpub);
 
   const account = await syncCoreAccount({
     core,
     currency,
     accountIndex,
     derivationMode,
-    xpub: seedIdentifier
+    xpub
   });
 
   if (isUnsubscribed()) return;
@@ -146,7 +173,6 @@ export const scanAccountsOnDevice = (
                 path: pathToAccountParent,
                 derivationMode
               });
-              console.log(result);
             } catch (e) {
               // feature detection: some old app will specifically returns this code for segwit case and we ignore it
               if (
