@@ -6,8 +6,6 @@ import byFamily from "../generated/libcore-buildTransaction";
 export default (opts: {
   account: Account,
   core: Core,
-  coreAccount: CoreAccount,
-  coreCurrency: CoreCurrency,
   transaction: Transaction,
   isPartial: boolean,
   isCancelled: () => boolean

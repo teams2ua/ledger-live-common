@@ -45,29 +45,9 @@ const doSignAndBroadcast = withLibcoreF(
     if (isCancelled()) return;
     const { currency, derivationMode, seedIdentifier, index } = account;
 
-    const walletName = getWalletName({
-      currency,
-      seedIdentifier,
-      derivationMode
-    });
-
-    const coreWallet = await getOrCreateWallet({
-      core,
-      walletName,
-      currency,
-      derivationMode
-    });
-    if (isCancelled()) return;
-    const coreAccount = await coreWallet.getAccount(index);
-    if (isCancelled()) return;
-    const coreCurrency = await coreWallet.getCurrency();
-    if (isCancelled()) return;
-
     const builded = await buildTransaction({
       account,
       core,
-      coreCurrency,
-      coreAccount,
       transaction,
       isPartial: false,
       isCancelled
